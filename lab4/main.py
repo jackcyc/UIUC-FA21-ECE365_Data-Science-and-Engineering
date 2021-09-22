@@ -1,11 +1,13 @@
+from sklearn.cluster import KMeans
 import numpy as np
 from sklearn import neighbors
 import scipy.spatial.distance as dist
 from sklearn import linear_model
 from sklearn.model_selection import train_test_split
 
+
 class Question1(object):
-    def kMeans(self,data,K,niter):
+    def kMeans(self, data, K, niter):
         """ Implement the K-Means algorithm.
 
         **For grading purposes only:**
@@ -25,11 +27,20 @@ class Question1(object):
         """
         np.random.seed(12312)
         # Put your code below
+        labels = np.zeros((data.shape[0]), dtype=int)
+        # initialize the k random center
+        centers = data[np.random.choice(data.shape[0], K, replace=False)]
+        # centers = np.random.choice(data[:], (K, data.shape[1]))
+        for i in range(niter):
+            labels = np.argmin(dist.cdist(data, centers), axis=1)
+            # recompute centers
+            for label in range(K):
+                centers[label] = data[labels == label, :].mean(axis=0)
 
         # Remember to check your data types: labels should be integers!
         return (labels, centers)
 
-    def calculateJ(self,data,kMeansfun):
+    def calculateJ(self, data, kMeansfun):
         """ Calculate the J_k value for K=2,...,10.
 
         This function should call the given kMeansfun function and set niter=100.
@@ -43,13 +54,19 @@ class Question1(object):
         """
         err = np.zeros(9)
         # Put your code below
-
+        niter = 2000
+        for idx, k in enumerate(range(2, 11)):
+            labels, centers = kMeansfun(data, k, niter)
+            # calculation
+            error = 0
+            for label in range(k):
+                error += dist.cdist(data[labels == label, :], [centers[label]], 'sqeuclidean').sum()
+            err[idx] = error
         return err
 
-from sklearn.cluster import KMeans
 
 class Question2(object):
-    def trainVQ(self,image,B,K):
+    def trainVQ(self, image, B, K):
         """ Generate a codebook for vector quantization.
 
         Please use the KMeans function from the sklearn package. You can use kmeans.cluster_centers_ to get the cluster centers after you fit your model.
@@ -68,9 +85,21 @@ class Question2(object):
         np.random.seed(12345)
         # Put your code below
 
-        return (codebook,kmeans)
+        # chopping the image
+        data = np.zeros((image.shape[0] * image.shape[1] // B**2, B**2))
+        idx = 0
+        for row in range(image.shape[0] // B):
+            for col in range(image.shape[1] // B):
+                data[idx] = image[row*B:(row+1)*B, col*B:(col+1)*B].flatten()
+                idx += 1
+        # clustering
+        kmeans = KMeans(n_clusters=K, init='k-means++')
+        kmeans.fit(data)
+        codebook = kmeans.cluster_centers_
 
-    def compressImg(self,image,codebook,B):
+        return (codebook, kmeans)
+
+    def compressImg(self, image, codebook, B):
         """ Compress an image using a given codebook.
 
         You can use the nearest neighbor classifier from scikit-learn if you want (though it is not necessary) to map blocks to their nearest codeword.
@@ -88,11 +117,18 @@ class Question2(object):
         1. cmpimg       (N//B, M//B) numpy ndarray. It consists of the indices in the codebook used to approximate the image.
         """
         # Put your code below
+        data = np.zeros((image.shape[0] * image.shape[1] // B**2, B**2))
+        idx = 0
+        for row in range(image.shape[0] // B):
+            for col in range(image.shape[1] // B):
+                data[idx] = image[row*B:(row+1)*B, col*B:(col+1)*B].flatten()
+                idx += 1
 
+        cmpimg = np.argmin(dist.cdist(data, codebook), axis=1).reshape((image.shape[0]//B, image.shape[1]//B))
         # Check that your indices are integers!
         return cmpimg.astype(int)
 
-    def decompressImg(self,indices,codebook,B):
+    def decompressImg(self, indices, codebook, B):
         """ Reconstruct an image from its codebook.
 
         You can use np.reshape() to reshape the flattened array.
@@ -106,11 +142,16 @@ class Question2(object):
         1. rctimage     (N, M) numpy ndarray. It consists of the indices in the codebook used to approximate the image.
         """
         # Put your code below
+        rctimage = np.zeros((indices.shape[0]*B, indices.shape[1]*B))
+        for row in range(indices.shape[0]):
+            for col in range(indices.shape[1]):
+                rctimage[row*B:(row+1)*B, col*B:(col+1)*B] = codebook[indices[row, col]].reshape((B, B))
 
         return rctimage
 
+
 class Question3(object):
-    def generatePrototypes(self,traindata,trainlabels,K_list):
+    def generatePrototypes(self, traindata, trainlabels, K_list):
         """ Generate prototypes from labeled data.
 
         You can use the KMeans function from the sklearn package.
@@ -132,11 +173,24 @@ class Question3(object):
         proto_dat_list = []
         proto_lab_list = []
         # Put your code below
+        num_classes = int(trainlabels.max() + 1)
+        for k in K_list:
+            for label in range(num_classes):
+                kmeans = KMeans(n_clusters=k, init='k-means++')
+                kmeans.fit(traindata[trainlabels == label])
+                if label == 0:
+                    dat = kmeans.cluster_centers_
+                    lab = np.full((k), label)
+                else:
+                    dat = np.concatenate((dat, kmeans.cluster_centers_), axis=0)
+                    lab = np.concatenate((lab, np.full((k), label)), axis=0)
+            proto_dat_list.append(dat)
+            proto_lab_list.append(lab)
 
         # Check that your proto_lab_list only contains integer arrays!
         return (proto_dat_list, proto_lab_list)
 
-    def protoValError(self,proto_dat_list,proto_lab_list,valdata,vallabels):
+    def protoValError(self, proto_dat_list, proto_lab_list, valdata, vallabels):
         """ Generate prototypes from labeled data.
 
         You may assume there are at least min(K_list) examples under each class. set(trainlabels) will give you the set of labels.
@@ -152,11 +206,16 @@ class Question3(object):
         """
         proto_err = np.zeros(len(proto_dat_list))
         # Put your code below
+        for i in range(len(proto_dat_list)):
+            clf = neighbors.KNeighborsClassifier(n_neighbors=1)
+            clf.fit(proto_dat_list[i], proto_lab_list[i])
+            proto_err[i] = 1 - clf.score(valdata, vallabels)
 
         return proto_err
 
+
 class Question4(object):
-    def benchmarkRSS(self,trainfeat,trainresp,valfeat,valresp):
+    def benchmarkRSS(self, trainfeat, trainresp, valfeat, valresp):
         """ Return the benchmark RSS.
 
         In particular, always predict the response as zero (mean response on the training data).
@@ -173,10 +232,11 @@ class Question4(object):
         1. rss          Scalar. The validation RSS.
         """
         # Put your code below
-
+        # always predict y_ = 0
+        rss = ((valresp - 0)**2).mean()
         return rss
 
-    def OLSRSS(self,trainfeat,trainresp,valfeat,valresp):
+    def OLSRSS(self, trainfeat, trainresp, valfeat, valresp):
         """ Return the RSS from the ordinary least squares model.
 
         Use sklearn.linear_model.LinearRegression() with the default parameters.
@@ -195,10 +255,12 @@ class Question4(object):
         1. rss          Scalar. The validation RSS.
         """
         # Put your code below
-
+        reg = linear_model.LinearRegression()
+        reg.fit(trainfeat, trainresp)
+        rss = ((valresp - reg.predict(valfeat))**2).mean()
         return rss
 
-    def RidgeRSS(self,trainfeat,trainresp,valfeat,valresp):
+    def RidgeRSS(self, trainfeat, trainresp, valfeat, valresp):
         """ Return the RSS from the ridge regression.
 
         Apply ridge regression with sklearn.linear_model.Ridge. Sweep the regularization/tuning parameter α = 0,...,100 with 1000 equally spaced values.
@@ -217,13 +279,25 @@ class Question4(object):
         3. best_rss     Scalar. The corresponding RSS.
         4. coef         (d,) numpy array. The minimizing coefficient. This is for visualization only. This will not be tested by the autograder.
         """
-        a = np.linspace(0,100,1000)
+        a = np.linspace(0, 100, 1000)
         rss_array = np.zeros(a.shape)
         # Put your code below
+        for idx, alpha in enumerate(a):
+            reg = linear_model.Ridge(alpha=alpha)
+            reg.fit(trainfeat, trainresp)
+            rss_array[idx] = ((valresp - reg.predict(valfeat))**2).mean()
+
+        best_idx = np.argmin(rss_array)
+        best_a = a[best_idx]
+        best_rss = rss_array[best_idx]
+        # best regressor
+        reg = linear_model.Ridge(alpha=best_a)
+        reg.fit(trainfeat, trainresp)
+        coef = reg.coef_
 
         return (rss_array, best_a, best_rss, coef)
 
-    def LassoRSS(self,trainfeat,trainresp,valfeat,valresp):
+    def LassoRSS(self, trainfeat, trainresp, valfeat, valresp):
         """ Return the RSS from the Lasso regression.
 
         Apply lasso regression with sklearn.linear_model.Lasso. Sweep the regularization/tuning parameter α = 0,...,1 with 1000 equally spaced values.
@@ -242,8 +316,20 @@ class Question4(object):
         3. best_rss     Scalar. The corresponding RSS.
         4. coef         (d,) numpy array. The minimizing coefficient. This is for visualization only. This will not be tested by the autograder.
         """
-        a = np.linspace(0.00001,1,1000)     # Since 0 will give an error, we use 0.00001 instead.
+        a = np.linspace(0.00001, 1, 1000)     # Since 0 will give an error, we use 0.00001 instead.
         rss_array = np.zeros(a.shape)
         # Put your code below
+        for idx, alpha in enumerate(a):
+            reg = linear_model.Lasso(alpha=alpha)
+            reg.fit(trainfeat, trainresp)
+            rss_array[idx] = ((valresp - reg.predict(valfeat))**2).mean()
+
+        best_idx = np.argmin(rss_array)
+        best_a = a[best_idx]
+        best_rss = rss_array[best_idx]
+        # best regressor
+        reg = linear_model.Lasso(alpha=best_a)
+        reg.fit(trainfeat, trainresp)
+        coef = reg.coef_
 
         return (rss_array, best_a, best_rss, coef)
