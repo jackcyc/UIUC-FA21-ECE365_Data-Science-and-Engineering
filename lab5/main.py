@@ -15,8 +15,14 @@ class Question1(object):
         W = np.zeros((data.shape[1],data.shape[1]))
         s = np.zeros(data.shape[1])
         # Put your code below
-
-
+        # eigen decomposition
+        C_ = data.T @ data / data.shape[0]  # estimated cov
+        eigens, U = np.linalg.eigh(C_)
+        W = np.fliplr(U).T
+        s = eigens[::-1]
+        # svd
+        # u, s, W = np.linalg.svd(data)
+        # s = s**2 / data.shape[0]
         return (W,s)
 
     def pcadimreduce(self,data,W,k):
@@ -32,7 +38,8 @@ class Question1(object):
         """
         reduced_data = np.zeros((data.shape[0],k))
         # Put your code below
-
+        W = W[:k, :]
+        reduced_data = data @ W.T
 
         return reduced_data
 
@@ -48,8 +55,8 @@ class Question1(object):
         """
         reconstructed_data = np.zeros((pcadata.shape[0],W.shape[0]))
         # Put your code below
-
-
+        W = W[:pcadata.shape[1], :]
+        reconstructed_data =  pcadata @ W
         return reconstructed_data
 
 from sklearn.decomposition import PCA
@@ -67,8 +74,9 @@ class Question2(object):
         pca = None
         unexpv = np.zeros(k)
         # Put your code below
-
-
+        pca = PCA(n_components=k)
+        pca.fit(X)
+        unexpv = 1 - np.cumsum(pca.explained_variance_ratio_, axis=0)
         return (pca,unexpv)
 
     def pca_approx(self,X_t,pca,i):
@@ -84,7 +92,9 @@ class Question2(object):
         """
         recon_img = np.zeros((1,4096))
         # Put your code below
-
+        reduced = np.zeros((1, pca.n_components_))
+        reduced[:, :i] = pca.transform(X_t.reshape((1, -1)))[:, :i]
+        recon_img = pca.inverse_transform(reduced)
 
         assert(recon_img.shape==(1,4096))
         return recon_img
@@ -99,7 +109,7 @@ class Question3(object):
             1. traindata       (Nt, d) numpy ndarray. The features in the training set.
             2. trainlabels     (Nt,) numpy array. The responses in the training set.
             3. valdata         (Nv, d) numpy ndarray. The features in the validation set.
-            4. valabels        (Nv,) numpy array. The responses in the validation set.
+            4. vallabels        (Nv,) numpy array. The responses in the validation set.
             5. k               Integer. Maximum number of PCA features to retain
 
         Returns:
@@ -110,6 +120,17 @@ class Question3(object):
 
         ve = np.zeros(k)
         # Put your code below
+        # train
+        clf = neighbors.KNeighborsClassifier(n_neighbors=1)
+        for i in range(k):
+            pca = PCA(n_components=i+1)
+            train_pca = pca.fit_transform(traindata)
+            clf.fit(train_pca, trainlabels)
+            # inference
+            val_pca = pca.transform(valdata)
+            ve[i] = 1 - clf.score(val_pca, vallabels)
 
+        min_ve = ve.min()
+        min_pca_feat = ve.argmin() + 1
 
         return (ve, min_ve, min_pca_feat)
